@@ -2,10 +2,14 @@ import express, { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import * as TE from 'fp-ts/TaskEither';
 import { pipe } from 'fp-ts/function';
+import tablesRouter from "./routes/tables";
 
 const prisma: PrismaClient = new PrismaClient();
 const app = express();
 app.use(express.json());
+
+
+app.use("/api/v2/tables", tablesRouter);
 
 const sendJson = (res: Response) => (data: object): TE.TaskEither<unknown, void> =>
     TE.rightTask(() => new Promise<void>((resolve) => {
