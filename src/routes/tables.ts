@@ -37,25 +37,27 @@ const validateColumns = (columns: tableColumn[]) => {
     return true
 }
 
-const getNemiID = () => " nid CHAR(32) PRIMARY KEY DEFAULT REPLACE(gen_random_uuid()::text, '-', '')"
-const mapColumns = (columns: tableColumn[])=> {
+const getNemiID = () => "nid CHAR(32) PRIMARY KEY DEFAULT REPLACE(gen_random_uuid()::text, '-', '') "
+
+const addNemiIdToColumns = (tableColumns: string[]): string[] => [getNemiID()].concat(tableColumns)
+const mapColumns = (columns: tableColumn[]): string[]=> {
     let postgresColumns = columns.map(column => {
-        let colString = column.name + "";
+        let colString = column.name;
         if (column.type === "string") {
-            colString = colString + " " + "VARCHAR(100)"
+            colString = colString + " VARCHAR(100) "
         } else if (column.type === "integer"){
-            colString = colString + " " + "INTEGER"
+            colString = colString + " INTEGER "
         } else if(column.type === "text"){
-            colString = colString + " " + "TEXT"
+            colString = colString + " TEXT "
         }else if(column.type === "boolean") {
-            colString = colString + " " + "BOOLEAN"
+            colString = colString + " BOOLEAN "
         } else if (column.type === "reference") {
-            colString = colString + " " + "CHAR(32) REFERENCES " + column.reference + "(nid)"
+            colString = colString + " CHAR(32) REFERENCES " + column.reference + "(nid) "
         }
         return colString
     })
 
-    return [getNemiID()].concat(postgresColumns)
+    return addNemiIdToColumns(postgresColumns)
 }
 
 router.post("/create", async (req: Request, res: Response) => {
