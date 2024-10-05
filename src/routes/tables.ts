@@ -1,70 +1,129 @@
 import { PrismaClient as PostgresPrismaClient } from '@prisma/client';
 import express, { Request, Response } from "express";
-
-interface ColumnDefinition {
-    name: string;
-    type: string;
-}
-
-function validateIdentifier(name: string): boolean {
-    // PostgreSQL identifiers must start with a letter or underscore
-    // and contain only letters, digits, and underscores
-    return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
-}
-
-function validateColumnType(type: string): boolean {
-    const validTypes = [
-        'INT',
-        'SERIAL',
-        'VARCHAR',
-        'TEXT',
-        'BOOLEAN',
-        'TIMESTAMP',
-        // Add other allowed types here
-    ];
-
-    // Extract the base type (e.g., 'VARCHAR' from 'VARCHAR(255)')
-    const baseType = type.split('(')[0].toUpperCase();
-
-    return validTypes.includes(baseType);
-}
+import {tableCreationInput, tableColumn} from "../types/tables";
+import { validateIdentifier, getNemiID } from "../utils/globalutils"
+import { TaskEither, tryCatch, fromEither } from 'fp-ts/TaskEither';
+import { pipe } from 'fp-ts/lib/function';
+import * as A from 'fp-ts/Array';
+import { Either, left, right, chain, map, fold, Applicative } from 'fp-ts/Either';
+import * as TE from 'fp-ts/TaskEither';
 
 const postgresClient : PostgresPrismaClient = new PostgresPrismaClient({
     datasources: { db: { url: "postgresql://surya:nemi@localhost:5432/nemi" } },
 });
 
+type INVALID_INPUT = string
+type INVALID_COLUMN_TYPE = string
+
+type ERROR = INVALID_INPUT | INVALID_COLUMN_TYPE
+
 const router = express.Router();
+
+const typeMap: Record<string, (column: tableColumn) => string> = {
+    string: (column) => `${column.name} VARCHAR(100)`,
+    integer: (column) => `${column.name} INTEGER`,
+    text: (column) => `${column.name} TEXT`,
+    boolean: (column) => `${column.name} BOOLEAN`,
+    reference: (column) => `${column.name} CHAR(32) REFERENCES ${column.reference}(nid)`,
+};
+
+const validateColumnType = (type: string): Either<string, string> => {
+    const validTypes: string[] =[ 'integer', 'string', 'text', 'boolean', 'reference', ];
+    return validTypes.includes(type as string)
+        ? right(type as string)
+        : left(`Invalid column type: ${type}` );
+};
+
+const mapColumnType = (column: tableColumn): Either<string, string> => {
+    const typeFun = typeMap[column.type];
+    return typeFun
+        ? right(typeFun(column))
+        : left(`Unknown column type: ${column.type}` );
+};
+
+const validateColumn = (column: tableColumn): Either<ERROR, tableColumn> =>
+    pipe(
+        validateIdentifier(column.name),
+        chain(() => validateColumnType(column.type)),
+        map(() => column)
+    );
+
+const mapInpColumnsToPostgresColumns = (columns: tableColumn[]): Either<ERROR, string[]> =>
+    pipe(
+        columns,
+        A.traverse(Applicative)(validateColumn),
+        chain(A.traverse(Applicative)(mapColumnType)),
+        map(addNemiIdToColumns) // Add NemiID if all columns are valid
+    );
+
+const addNemiIdToColumns = (tableColumns: string[]): string[] =>
+    [getNemiID(), ...tableColumns];
+
+const getSQLCommand_createTable = (tableName: string) => (columns: string): string =>
+    `CREATE TABLE "${tableName}" (${columns})`;
+
+const checkTableExists = (tableName: string): TaskEither<string, boolean> => {
+    return tryCatch(
+        async () => {
+            const record = await postgresClient.nemiTables.findFirst(({
+                where: {
+                    tableName: { equals: tableName }
+                }
+            }))
+            return !!record
+        },
+        (error) => String(error)
+    );
+}
+
+const executeSQL = (sqlQuery: string): TaskEither<string, void> => {
+    return tryCatch(
+        async () => {
+            await postgresClient.$executeRawUnsafe(sqlQuery);
+        },
+        (error) => String(error)
+    );
+};
+
+const addTableToNemiTables = (tableName: string, columns: [tableColumn]): TaskEither<string, string> => {
+    return tryCatch(
+        async () => {
+            await postgresClient.nemiTables.create({
+                data: {
+                    tableName: tableName,
+                    columns: columns
+                }
+            })
+            return tableName
+        },
+        (error) => String(error)
+    )
+}
+
 router.post("/create", async (req: Request, res: Response) => {
-    const { tableName, columns } = req.body as {
-        tableName: string;
-        columns: ColumnDefinition[];
-    };
+    const { tableName, columns } = req.body as tableCreationInput;
 
-    const columnsDefinition = columns
-        .map(column => {
-            // Validate column names and types
-            if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(column.name)) {
-                throw new Error('Invalid column name.');
-            }
-            // You might want to have a whitelist of allowed types
-            // const validTypes = ['INT', 'VARCHAR(255)', 'TEXT', 'BOOLEAN'];
-            // if (!validTypes.includes(column.type.toUpperCase())) {
-            //     throw new Error('Invalid column type.');
-            // }
-            return `${column.name} ${column.type}`;
-        })
-        .join(', ');
+    const program: TaskEither<string, string> = pipe(
+        TE.fromEither(validateIdentifier(tableName)),
+        TE.chain((validTableName) =>
+            pipe(
+                mapInpColumnsToPostgresColumns(columns), 
+                map(cols => cols.join(", ")),
+                map(getSQLCommand_createTable(validTableName)), 
+                TE.fromEither, 
+                TE.chainFirst(() => checkTableExists(validTableName)),
+                TE.chain((sqlQuery) => executeSQL(sqlQuery)), 
+                TE.chain(() => addTableToNemiTables(validTableName, columns))
+            )
+        )
+    );
 
-    const sql = `CREATE TABLE "${tableName}" (${columnsDefinition});`;
-    try {
-        await postgresClient.$executeRawUnsafe(sql);
-        res.status(200).send(`Table ${tableName} created successfully.`);
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('Error creating table.');
-    }
+    program().then(
+        fold(
+            (e) => res.status(400).send(e),
+            () => res.status(200).send(`Table ${tableName} created successfully.`) 
+        )
+    );
 })
-
-
 
 export default router;
