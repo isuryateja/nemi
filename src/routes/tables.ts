@@ -1,60 +1,73 @@
 import { PrismaClient as PostgresPrismaClient } from '@prisma/client';
 import express, { Request, Response } from "express";
-
-interface ColumnDefinition {
-    name: string;
-    type: string;
-}
-
-function validateIdentifier(name: string): boolean {
-    // PostgreSQL identifiers must start with a letter or underscore
-    // and contain only letters, digits, and underscores
-    return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
-}
-
-function validateColumnType(type: string): boolean {
-    const validTypes = [
-        'INT',
-        'SERIAL',
-        'VARCHAR',
-        'TEXT',
-        'BOOLEAN',
-        'TIMESTAMP',
-        // Add other allowed types here
-    ];
-
-    // Extract the base type (e.g., 'VARCHAR' from 'VARCHAR(255)')
-    const baseType = type.split('(')[0].toUpperCase();
-
-    return validTypes.includes(baseType);
-}
+import {tableCreationInput, tableColumn} from "../types/tables"
 
 const postgresClient : PostgresPrismaClient = new PostgresPrismaClient({
     datasources: { db: { url: "postgresql://surya:nemi@localhost:5432/nemi" } },
 });
 
 const router = express.Router();
+interface ColumnDefinition {
+    name: string;
+    type: string;
+}
+
+function isValidName (name: string): boolean {
+    return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
+}
+
+function isValidColumnType(type: string): boolean {
+    const validTypes = [
+        'integer',
+        'string',
+        'text',
+        'boolean',
+        'reference',
+    ];
+    return validTypes.includes(type);
+}
+
+
+const validateColumns = (columns: tableColumn[]) => {
+    for (const col of columns) {
+        if (! isValidName(col.name) || !isValidColumnType(col.type) ) {
+            return false
+        }
+    }
+    return true
+}
+
+const getNemiID = () => " nid CHAR(32) PRIMARY KEY DEFAULT REPLACE(gen_random_uuid()::text, '-', '')"
+const mapColumns = (columns: tableColumn[])=> {
+    let postgresColumns = columns.map(column => {
+        let colString = column.name + "";
+        if (column.type === "string") {
+            colString = colString + " " + "VARCHAR(100)"
+        } else if (column.type === "integer"){
+            colString = colString + " " + "INTEGER"
+        } else if(column.type === "text"){
+            colString = colString + " " + "TEXT"
+        }else if(column.type === "boolean") {
+            colString = colString + " " + "BOOLEAN"
+        } else if (column.type === "reference") {
+            colString = colString + " " + "CHAR(32) REFERENCES " + column.reference + "(nid)"
+        }
+        return colString
+    })
+
+    return [getNemiID()].concat(postgresColumns)
+}
+
 router.post("/create", async (req: Request, res: Response) => {
-    const { tableName, columns } = req.body as {
-        tableName: string;
-        columns: ColumnDefinition[];
-    };
+    const { tableName, columns } = req.body as tableCreationInput;
 
-    const columnsDefinition = columns
-        .map(column => {
-            // Validate column names and types
-            if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(column.name)) {
-                throw new Error('Invalid column name.');
-            }
-            // You might want to have a whitelist of allowed types
-            // const validTypes = ['INT', 'VARCHAR(255)', 'TEXT', 'BOOLEAN'];
-            // if (!validTypes.includes(column.type.toUpperCase())) {
-            //     throw new Error('Invalid column type.');
-            // }
-            return `${column.name} ${column.type}`;
-        })
-        .join(', ');
+    if (!validateColumns(columns) || !isValidName(tableName)) {
+        res.status(500).send('Error creating table. || Invalid table name or col type');
+        return
+    }
 
+    const columnsDefinition = mapColumns(columns).join(', ');
+    console.log(columnsDefinition)
     const sql = `CREATE TABLE "${tableName}" (${columnsDefinition});`;
     try {
         await postgresClient.$executeRawUnsafe(sql);

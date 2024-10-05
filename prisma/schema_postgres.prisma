@@ -14,7 +14,7 @@ datasource db {
 }
 
 model NemiTables {
-  id        Int      @id @default(autoincrement())
+  nid       String   @id @default(dbgenerated("replace(gen_random_uuid()::text, '-', '')")) @db.Char(32)
   tableName String   @unique
   columns   Json
   createdAt DateTime @default(now())

@@ -8,7 +8,10 @@
     "dev": "ts-node-dev src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "prisma": "prisma"
+    "prisma": "prisma",
+    "schema-generate": "npx prisma generate --schema=prisma/schema_postgres.prisma",
+    "schema-create": "npx prisma migrate dev --name add_custom_tables --schema=prisma/schema_postgres.prisma"
+
   },
   "keywords": [],
   "author": "",
