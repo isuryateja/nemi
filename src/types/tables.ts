@@ -1,12 +1,16 @@
 
-export type tableColumn = {
-    "name": string,
-    "type": string,
-    "reference"? : string,
-    "attributes": [string]
+
+
+export type TableCreationInput = {
+    "tableName": string,
+    "columns": TableColumn[]
 }
 
-export type tableCreationInput = {
-    "tableName": string,
-    "columns": [tableColumn]
+export type TableColumn = {
+    name: string,
+    type: string,
+    label: string,
+    reference?: string
 }
+
+export type TableColumns = TableColumn[]

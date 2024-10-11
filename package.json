@@ -9,26 +9,24 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "prisma": "prisma",
-    "schema-generate": "npx prisma generate ",
-    "schema-create-tables": "npx prisma migrate dev --name add_custom_tables",
-    "schema-push": "npx prisma db push ",
-    "schema-pull": "npx prisma db pull"
+    "schema-generate": "npx prisma generate --schema=prisma/schema_postgres.prisma",
+    "schema-create": "npx prisma migrate dev --name add_custom_tables --schema=prisma/schema_postgres.prisma"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@prisma/client": "^5.20.0",
     "express": "^4.21.0",
     "fp-ts": "^2.16.9",
     "io-ts": "^2.2.21",
     "knex": "^3.1.0",
+    "kysely": "^0.27.4",
     "pg": "^8.13.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.7.4",
-    "prisma": "^5.20.0",
+    "@types/pg": "^8.11.10",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.6.2"

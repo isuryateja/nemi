@@ -1,112 +1,75 @@
 import express, {Request, Response} from "express";
-import { PrismaClient as MongoClient } from '@prisma/client';
-import db from '../knex.db';
-import vm from 'node:vm';
+import {TableColumn, TableCreationInput} from "../types/tables";
+import {trace, validateIdentifier, typeMap} from "../utils/globalutils";
+import * as TE from 'fp-ts/TaskEither';
+import * as O from 'fp-ts/Option';
+import {TaskEither, tryCatch} from 'fp-ts/TaskEither';
+import {pipe} from 'fp-ts/lib/function';
+import * as A from 'fp-ts/Array';
+import * as E from 'fp-ts/Either';
+import {chain, Either, fold, left, map, right} from 'fp-ts/Either';
+import {db} from '../kysely.db';
+import {CreateTableBuilder, sql} from 'kysely';
+import exp from "node:constants";
+import {as} from "fp-ts/IO";
 
-const mongoClient = new MongoClient({
-    datasources: { db: { url: "mongodb+srv://admin:62892@cluster0.mrqbgzw.mongodb.net/nemidb" } },
-});
 const router = express.Router();
 
-class Car {
-    name: string;
-    year: string;
-    constructor(name: string, year: string) {
-        this.name = name;
-        this.year = year;
-    }
-    getYear(): string {
-        return (this.year);
+export type RecordCreationInput = {
+    "tableName": string,
+    "values": Object
+}
+
+type Error = string
+
+let example = {
+    tableName : "string",
+    values: {
+        name: "value",
+        scope: "value",
+        description: "value"
     }
 }
 
-const context = {
-    Car: Car,
-    console: console
-};
-
-
-async function getBusinessRules(tableName:string, operation: string) {
-    const conditions = {
-        tableName: tableName
-    }
-    try {
-        return await db(tableName).where(conditions).select('*');
-    } catch (error) {
-        console.error('Error fetching data from table:', error);
-        throw error;
-    }
+const validateColumns = (values: Object) : Either<Error, any> => {
+    return E.right(values)
 }
 
-async function getRecordFromDynamicTable(tableName: string, conditions: object) {
-    try {
-        return await db(tableName).where(conditions).select('*');
-    } catch (error) {
-      console.error('Error fetching data from table:', error);
-      throw error;
-    }
-  }
+const validateRecordInput = (input: RecordCreationInput): Either<Error, RecordCreationInput> => {
 
-async function createRecord(tableName: string) {
-    try {
-        return await db.insert({username: 'test user', email: 'test@email.com'}).into('hrcase');
-        return await db.insert({
-            tableName: 'hrcase', name: "test br", script: 'console.log("i m br")',
-            description: "sdfd"
-        }).into(tableName);
-    } catch (error) {
-        console.error('Error fetching data from table:', error);
-        throw error;
-    }
+    return input.values && input.tableName ? E.right(input) : E.left(" Input type wrong");
+
 }
 
-router.get("/:tableName/:nemiId", async (req: Request, res: Response) => {
-    const { tableName, nemiId } = req.params;
-    const conditions = { nid: nemiId };
-    try {
-        const record = await getRecordFromDynamicTable(tableName, conditions);
-        console.log('Record:', record);
-        if(record) {
-           const brs =  await getBusinessRules (tableName, "");
-           console.log(brs)
-        }
-      } catch (error) {
-        res.status(404).send({"message": "not found"})
-        console.error('Error:', error);
-      }
+const insertIntoTable = (input: RecordCreationInput) : TaskEither<Error, void> => {
+    const {tableName,values} = input;
+    return tryCatch(
+        async () => {
+            // @ts-ignore
+            let res = await db.insertInto(tableName).values(values).execute();
+        },
+        (e) => "wrong: " + JSON.stringify(e)
+    )
+}
 
-    res.status(200).send("OK")
+router.post("/create", async (req:Request, res: Response) => {
+   const {tableName,values} = req.body as RecordCreationInput;
 
-})
+   const program = pipe(
+       validateRecordInput({tableName, values}),
+       TE.fromEither,
+       TE.chain(insertIntoTable)
+   )
 
-router.post("/:tableName/", async (req: Request, res: Response) => {
-    const { tableName} = req.params;
-    console.log("post - " , tableName)
-    try {
-        const record = await createRecord(tableName);
-        console.log('Record:', record);
-        res.status(200).send({message: record})
-    } catch (error) {
-        console.error('Error:', error);
-        res.status(500).send({error: error})
-    }
+   const result = await program();
 
-
-})
-
-
-router.get("/script", async (req: Request, res: Response) => {
-    const { data } = req.body;
-    // console.log(data);
-    res.status(200).send("OK")
-    const script = new vm.Script(data);
-
-    try {
-        script.runInNewContext(context);
-    } catch (error) {
-        console.error('Error executing script:', error);
-    }
-
+   pipe(
+       result,
+       fold(
+           (e) => res.status(500).send(JSON.stringify(e)),
+           () => res.status(200).send(`Inserted a row in ${tableName}`)
+       )
+   )
 
 })
 
