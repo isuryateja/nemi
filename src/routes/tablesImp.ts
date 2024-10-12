@@ -1,4 +1,4 @@
-import { PrismaClient as PostgresPrismaClient } from '@prisma/client';
+/*import { PrismaClient as PostgresPrismaClient } from '@prisma/client';
 import express, { Request, Response } from "express";
 import { tableCreationInput, tableColumn } from "../types/tables";
 
@@ -123,3 +123,5 @@ router.post("/create", async (req: Request, res: Response) => {
 });
 
 export default router;
+
+ */
