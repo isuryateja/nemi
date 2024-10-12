@@ -1,17 +1,13 @@
 import express, {Request, Response} from "express";
-import {TableColumn, TableCreationInput} from "../types/tables";
-import {trace, validateIdentifier, typeMap} from "../utils/globalutils";
 import * as TE from 'fp-ts/TaskEither';
-import * as O from 'fp-ts/Option';
 import {TaskEither, tryCatch} from 'fp-ts/TaskEither';
 import {pipe} from 'fp-ts/lib/function';
-import * as A from 'fp-ts/Array';
 import * as E from 'fp-ts/Either';
-import {chain, Either, fold, left, map, right} from 'fp-ts/Either';
+import {Either, fold} from 'fp-ts/Either';
 import {db} from '../kysely.db';
-import {CreateTableBuilder, sql} from 'kysely';
-import exp from "node:constants";
-import {as} from "fp-ts/IO";
+import {Error} from "../utils/globalutils";
+import {BRFetchRecord, getBRs} from "./businessRules";
+import vm from 'node:vm';
 
 const router = express.Router();
 
@@ -20,9 +16,13 @@ export type RecordCreationInput = {
     "values": Object
 }
 
-type Error = string
 
-let example = {
+const context = {
+    console: console,
+    nemi: db
+};
+
+let exampleInput = {
     tableName : "string",
     values: {
         name: "value",
@@ -31,21 +31,22 @@ let example = {
     }
 }
 
+//TODO
 const validateColumns = (values: Object) : Either<Error, any> => {
     return E.right(values)
 }
 
+//TODO
 const validateRecordInput = (input: RecordCreationInput): Either<Error, RecordCreationInput> => {
 
     return input.values && input.tableName ? E.right(input) : E.left(" Input type wrong");
 
 }
 
-const insertIntoTable = (input: RecordCreationInput) : TaskEither<Error, void> => {
+export const insertIntoTable = (input: RecordCreationInput) : TaskEither<Error, void> => {
     const {tableName,values} = input;
     return tryCatch(
         async () => {
-            // @ts-ignore
             let res = await db.insertInto(tableName).values(values).execute();
         },
         (e) => "wrong: " + JSON.stringify(e)
@@ -71,6 +72,88 @@ router.post("/create", async (req:Request, res: Response) => {
        )
    )
 
+})
+
+
+const filterBrs =  (when: string, operation:string) => (brs: BRFetchRecord[]) : BRFetchRecord[] =>
+    brs.filter(br => br.when === when && br.operation === operation)
+        .sort((a,b) => (a.order - b.order));
+
+const runScriptWithContext = (context: any) => (script: string) => {
+    const runnable = new vm.Script(script);
+    try {
+        runnable.runInNewContext(context);
+    } catch (error) {
+        console.error('Error executing script:', error);
+    }
+}
+
+const makeNemiRecordMutableSafe = (nemiRecord: any) => {
+    const immutableProperties = ['nid', 'scope', 'created_at']
+    immutableProperties.forEach(property => {
+        Object.defineProperty(nemiRecord, property, {
+            writable: false,
+            enumerable: true,
+            configurable: false,
+        });
+    })
+    return nemiRecord;
+}
+
+const getRecord = async (table: string, nid:string) => {
+    return await db.selectFrom(table)
+              .where('nid', '=', nid)
+              .selectAll()
+              .executeTakeFirst();
+}
+
+const getTableIdFromNemiTables = async (table:string) => {
+    return await db.selectFrom("nemiTables")
+        .where('name', '=', table)
+        .select("nid")
+        .executeTakeFirst()
+}
+
+const updateNemiRecord = async (table: string, nid: string, values: any) => {
+    let rec = await db.updateTable(table )
+        .where("nid", "=", nid)
+        .set(values)
+        .executeTakeFirst()
+    console.log("updated record: ", rec)
+}
+router.get("/:table/:nid", async (req:Request, res:Response) => {
+    let table = req.params.table as string;
+    let nid = req.params.nid as string;
+
+    let nemiTableRecord  = await getTableIdFromNemiTables(table)
+    let tableId = nemiTableRecord?.nid;
+
+    if (!tableId) {
+        res.status(400).send( `No table with name ${table} found`);
+        return;
+    }
+
+    let current = await getRecord(table, nid);
+    makeNemiRecordMutableSafe(current);
+
+    let scriptContext = {...context, current}
+
+    let brs = await getBRs(tableId);
+    const beforeQueryBrs = filterBrs("before", "query")(brs);
+    const afterQueryBrs = filterBrs("after", "query")(brs);
+
+    console.log("current Record before : ", JSON.stringify(current, null, 2))
+
+    beforeQueryBrs.forEach(br => runScriptWithContext(scriptContext)(br.script)
+    );
+
+    console.log("current Record: ", JSON.stringify(current, null, 2))
+
+    afterQueryBrs.forEach(br => runScriptWithContext(scriptContext)(br.script) )
+
+    await updateNemiRecord(table, nid, current);
+
+    res.status(200).send(current)
 })
 
 

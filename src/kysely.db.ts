@@ -35,6 +35,7 @@ interface Database {
         script: string;
         when: string;
         operation: string;
+        order: number;
     };
     scriptModules: {
         nid?: string;
@@ -43,6 +44,7 @@ interface Database {
         name: string;
         script: string;
     };
+    [key: string]: Record<string, any>;
 }
 
 // Initialize Kysely with PostgreSQL

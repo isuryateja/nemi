@@ -40,6 +40,7 @@ export async function up(knex: Knex): Promise<void> {
         table.text('script').notNullable();
         table.string('when').notNullable(); // before, after
         table.string('operation').notNullable(); // insert, update, etc.
+        table.integer('order').notNullable();
     });
 
     // Create scriptModules table

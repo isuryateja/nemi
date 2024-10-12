@@ -1,15 +1,15 @@
 import express, { Request, Response } from 'express';
 import * as TE from 'fp-ts/TaskEither';
 import { pipe } from 'fp-ts/function';
-import tablesRouter from "./routes/tables";
-import recordRouter from "./routes/records";
+import {routes} from "./routes/nemiRouters"
 
 const app = express();
 app.use(express.json());
 
 
-app.use("/api/v2/tables", tablesRouter);
-app.use("/api/v2/record", recordRouter);
+app.use("/api/v2/tables", routes.tables);
+app.use("/api/v2/record", routes.records);
+app.use("/api/v2/br/", routes.br)
 
 const sendJson = (res: Response) => (data: object): TE.TaskEither<unknown, void> =>
     TE.rightTask(() => new Promise<void>((resolve) => {

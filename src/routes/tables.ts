@@ -1,6 +1,6 @@
 import express, {Request, Response} from "express";
 import {TableColumn, TableCreationInput} from "../types/tables";
-import {trace, validateIdentifier, typeMap} from "../utils/globalutils";
+import {trace, validateIdentifier, typeMap, GLOBAL_SCOPE} from "../utils/globalutils";
 import * as TE from 'fp-ts/TaskEither';
 import * as O from 'fp-ts/Option';
 import {TaskEither, tryCatch} from 'fp-ts/TaskEither';
@@ -23,7 +23,7 @@ type tableInsertReturn = {
 type ERROR = string
 const VALID_COLUMN_TYPES: string[] = ['integer', 'string', 'text', 'boolean', 'reference'];
 
-const GLOBAL_SCOPE: string = "6a0613e2-29ee-4f45-8aee-d1af7e48644b";
+
 const validateColumnType = (type: string): Either<string, string> =>
     VALID_COLUMN_TYPES.includes(type)
         ? right(type)
@@ -62,6 +62,19 @@ const addScopeToSchema = (schemaBuilder: TableBuilder): TableBuilder =>
         col.references('nemiScope.nid')
     );
 
+const addCreatedAtToSchema = (schemaBuilder: TableBuilder): TableBuilder =>
+    schemaBuilder.addColumn('createdAt', 'timestamptz', (col: any) =>
+        col.defaultTo(sql`CURRENT_TIMESTAMP`)
+    );
+
+
+const addDefaultColumns = (schemaBuilder: TableBuilder): TableBuilder => pipe(
+        schemaBuilder,
+        addCreatedAtToSchema,
+        addNemiIdToSchema,
+        addScopeToSchema
+    )
+
 const addColumnsToSchema = (colBuilders: Either<ERROR, ColumnBuilder[]>) => (schemaBuilder: TableBuilder)
     : Either<string, TableBuilder> => {
     return pipe(
@@ -76,8 +89,7 @@ const getTableBuilder = ( tableName: string, columns: TableColumn[]): Either<ERR
     const columnBuilders: Either<string, ColumnBuilder[]> = mapInpColumnsToSchemaBuilders(columns);
     return pipe(
         db.schema.createTable(tableName),
-        addNemiIdToSchema,
-        addScopeToSchema,
+        addDefaultColumns,
         addColumnsToSchema(columnBuilders)
     )
 }
@@ -88,24 +100,28 @@ const createTable = (tableBuilder: TableBuilder):  TaskEither<ERROR, void> =>
         (e) => "Error creating table: " + String(e)
     )
 
+/*
+	•	TE.fromNullable: Converts a nullable value into a TaskEither, producing a Left if the value is null or undefined.
+	•	res?.nid: Safely accesses nid, even if res is undefined.
+ */
 const addTableToNemiTables = ( tableName: string ): TaskEither<ERROR, string> => {
-    return tryCatch(
-        async () => {
-            let res = await db.insertInto('nemiTables')
+    return pipe(
+        tryCatch(
+        async () =>  await db.insertInto('nemiTables')
                 .values({
                     name: tableName,
                     label: tableName,
                     scope: GLOBAL_SCOPE
                 })
                 .returning('nid')
-                .executeTakeFirst();
-            if (!res || !res.nid) {
-                throw new Error("No Table Id returned after adding table to nemiTables")
-            }
-            return res.nid;
-        },
+                .executeTakeFirst(),
         (error) => String(error)
-    );
+        ),
+        TE.chain(res =>
+            TE.fromNullable("No Table Id returned after adding table to nemiTables")(res?.nid)
+        )
+    )
+
 };
 
 const addColumnToNemiColumns = (tableId: string) => (column: TableColumn): TaskEither<ERROR, void> => {
@@ -133,18 +149,22 @@ const addColumnsToNemiColumns = (tableId: string, columns: TableColumn[]): TaskE
     );
 };
 
-const checkTableExists = (tableName: string): TaskEither<ERROR, void> => {
-    return tryCatch(
-        async () => {
-            const record = await db
+const checkTableExists = (tableName: string): TaskEither<ERROR, any> => {
+    return pipe(
+        tryCatch(
+        async () =>  await db
                 .selectFrom('nemiTables')
                 .select('nid')
                 .where('name', '=', tableName)
-                .executeTakeFirst();
-            if (record) throw new Error(`table exists`)
-        },
+                .executeTakeFirst(),
         (error) => String(error)
-    );
+        ),
+        TE.chain(record =>
+            record
+                ? TE.left(`Table by the name ${tableName} already exists`)
+                : TE.right(record)
+        )
+    )
 };
 
 router.post("/create", async (req: Request, res: Response) => {
