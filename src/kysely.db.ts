@@ -1,5 +1,6 @@
 import { Kysely, PostgresDialect } from 'kysely';
 import { Pool } from 'pg';
+import 'dotenv/config';
 
 // Define your database schema
 interface Database {
@@ -51,11 +52,11 @@ interface Database {
 export const db = new Kysely<Database>({
     dialect: new PostgresDialect({
         pool: new Pool({
-            connectionString: 'postgresql://surya:nemi@localhost:5432/nemi',
+            connectionString: process.env.DATABASE_URL,
         }),
     }),
 });
 
 const pool = new Pool({
-    connectionString: 'postgresql://surya:nemi@localhost:5432/nemi',
+    connectionString: process.env.DATABASE_URL,
 });
