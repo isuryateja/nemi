@@ -8,6 +8,7 @@ import {db} from '../kysely.db';
 import {Error} from "../utils/globalutils";
 import {BRFetchRecord, getBRs} from "./businessRules";
 import vm from 'node:vm';
+import {Dict} from "../constants/dictionary";
 
 const router = express.Router();
 
@@ -108,7 +109,7 @@ const getRecord = async (table: string, nid:string) => {
 }
 
 const getTableIdFromNemiTables = async (table:string) => {
-    return await db.selectFrom("nemiTables")
+    return await db.selectFrom(Dict.NEMI_TABLES)
         .where('name', '=', table)
         .select("nid")
         .executeTakeFirst()
@@ -121,6 +122,7 @@ const updateNemiRecord = async (table: string, nid: string, values: any) => {
         .executeTakeFirst()
     console.log("updated record: ", rec)
 }
+
 router.get("/:table/:nid", async (req:Request, res:Response) => {
     let table = req.params.table as string;
     let nid = req.params.nid as string;

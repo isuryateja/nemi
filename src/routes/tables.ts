@@ -10,15 +10,12 @@ import * as E from 'fp-ts/Either';
 import {chain, Either, fold, left, map, right} from 'fp-ts/Either';
 import {db} from '../kysely.db';
 import {CreateTableBuilder, sql} from 'kysely';
+import {Dict} from "../constants/dictionary"
 
 const router = express.Router();
 
 type TableBuilder = CreateTableBuilder<any, never>;
 type ColumnBuilder = (A: TableBuilder) => TableBuilder;
-
-type tableInsertReturn = {
-    nid : string | undefined
-}
 
 type ERROR = string
 const VALID_COLUMN_TYPES: string[] = ['integer', 'string', 'text', 'boolean', 'reference'];
@@ -59,7 +56,7 @@ const addNemiIdToSchema = (schemaBuilder: TableBuilder): TableBuilder =>
 
 const addScopeToSchema = (schemaBuilder: TableBuilder): TableBuilder =>
     schemaBuilder.addColumn('scope', 'uuid', (col: any) =>
-        col.references('nemiScope.nid')
+        col.references(`${Dict.NEMI_SCOPE}.nid`)
     );
 
 const addCreatedAtToSchema = (schemaBuilder: TableBuilder): TableBuilder =>
@@ -107,7 +104,7 @@ const createTable = (tableBuilder: TableBuilder):  TaskEither<ERROR, void> =>
 const addTableToNemiTables = ( tableName: string ): TaskEither<ERROR, string> => {
     return pipe(
         tryCatch(
-        async () =>  await db.insertInto('nemiTables')
+        async () =>  await db.insertInto(Dict.NEMI_TABLES)
                 .values({
                     name: tableName,
                     label: tableName,
@@ -118,7 +115,7 @@ const addTableToNemiTables = ( tableName: string ): TaskEither<ERROR, string> =>
         (error) => String(error)
         ),
         TE.chain(res =>
-            TE.fromNullable("No Table Id returned after adding table to nemiTables")(res?.nid)
+            TE.fromNullable(`No Table Id returned after adding table to ${Dict.NEMI_TABLES}`)(res?.nid)
         )
     )
 
@@ -127,7 +124,7 @@ const addTableToNemiTables = ( tableName: string ): TaskEither<ERROR, string> =>
 const addColumnToNemiColumns = (tableId: string) => (column: TableColumn): TaskEither<ERROR, void> => {
     return tryCatch(
         async () => {
-            const result = await db.insertInto('nemiColumns')
+            const result = await db.insertInto(Dict.NEMI_COLUMNS)
                 .values({
                     name: column.name,
                     label: column.label,
@@ -140,20 +137,18 @@ const addColumnToNemiColumns = (tableId: string) => (column: TableColumn): TaskE
     )
 }
 
-const addColumnsToNemiColumns = (tableId: string, columns: TableColumn[]): TaskEither<ERROR, void> => {
-    console.log("columns ", JSON.stringify(columns));
-    return pipe(
+const addColumnsToNemiColumns = (tableId: string, columns: TableColumn[]): TaskEither<ERROR, void> =>
+    pipe(
         columns,
         A.traverse(TE.ApplicativeSeq)((column) => addColumnToNemiColumns(tableId)(column)),
         TE.map(() => undefined)
     );
-};
 
 const checkTableExists = (tableName: string): TaskEither<ERROR, any> => {
     return pipe(
         tryCatch(
         async () =>  await db
-                .selectFrom('nemiTables')
+                .selectFrom(Dict.NEMI_TABLES)
                 .select('nid')
                 .where('name', '=', tableName)
                 .executeTakeFirst(),
@@ -167,10 +162,30 @@ const checkTableExists = (tableName: string): TaskEither<ERROR, any> => {
     )
 };
 
+const validateTableName = (input: any): Either<string, TableCreationInput> =>
+    typeof input.tableName === 'string' && input.tableName.length > 0
+        ? right(input)
+        : left('Invalid or missing tableName');
+
+const validateColumns = (input: any): Either<string, TableCreationInput> =>{
+    console.log(input)
+   return     Array.isArray(input.columns) && input.columns.length > 0
+       ? right(input)
+       : left("Columns array is missing or empty")
+}
+
+const validateRequestBody = (input: any): Either<string, TableCreationInput> =>
+    pipe(
+        input,
+        validateTableName,
+        chain(validateColumns)
+    )
+
 router.post("/create", async (req: Request, res: Response) => {
     const { tableName, columns } = req.body as TableCreationInput;
     const program = pipe(
-        validateIdentifier(tableName),
+        validateRequestBody(req.body),
+        chain(() => validateIdentifier(tableName)),
         E.chain(() => getTableBuilder(tableName, columns)),
         TE.fromEither,
         TE.chainFirst(() => checkTableExists(tableName)),

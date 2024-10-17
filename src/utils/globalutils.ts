@@ -4,7 +4,7 @@ import {CreateTableBuilder} from "kysely";
 
 type TableBuilder = CreateTableBuilder<any, never>;
 
-export const GLOBAL_SCOPE: string = "963e76ad-95c8-464d-aea3-ad6e08571094";
+export const GLOBAL_SCOPE: string = "ffb44ff4-54c1-49a1-bea7-b60d05c34859";
 export type Error = string;
 export const validateIdentifier= (name: string): Either<string, string> => {
     let isValid = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);

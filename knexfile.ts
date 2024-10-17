@@ -1,16 +1,17 @@
 import type { Knex } from "knex";
+import 'dotenv/config';
 
 // Update with your config settings.
 
 const config: { [key: string]: Knex.Config } = {
   development: {
     client: "pg", // PostgreSQL client
-    connection: "postgresql://surya:nemi@localhost:5432/nemi", // Connection string for development
+    connection: process.env.DATABASE_URL, // Connection string for development
   },
 
   staging: {
     client: "pg", // PostgreSQL client
-    connection: "postgresql://surya:nemi@localhost:5432/nemi", // Connection string for staging
+    connection: process.env.DATABASE_URL, // Connection string for staging
     pool: {
       min: 2,
       max: 10
@@ -22,7 +23,7 @@ const config: { [key: string]: Knex.Config } = {
 
   production: {
     client: "pg", // PostgreSQL client
-    connection: "postgresql://surya:nemi@localhost:5432/nemi", // Connection string for production
+    connection: process.env.DATABASE_URL, // Connection string for production
     pool: {
       min: 2,
       max: 10
