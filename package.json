@@ -7,15 +7,13 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node-dev src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
-    "prisma": "prisma",
-    "schema-generate": "npx prisma generate --schema=prisma/schema_postgres.prisma",
-    "schema-create": "npx prisma migrate dev --name add_custom_tables --schema=prisma/schema_postgres.prisma"
+    "start": "node dist/server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "fp-ts": "^2.16.9",
     "io-ts": "^2.2.21",
