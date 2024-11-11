@@ -35,12 +35,12 @@ export const getBRs = async (table:string ): Promise< BRFetchRecord[] > => {
         .execute()
 }
 
-
 const createBrs = async (brs: BR_bulk_input) => {
     await db.insertInto('businessRules')
         .values(brs)
         .execute();
 }
+
 router.get("/:table", async (req:Request, res:Response) => {
     let table = req.params.table as string;
     let brs = await getBRs(table);
@@ -49,8 +49,6 @@ router.get("/:table", async (req:Request, res:Response) => {
 
     res.status(200).send(JSON.stringify(brs))
 })
-
-
 
 router.post("/bulk-create/:table", async (req:Request, res: Response) => {
     let brs = req.body as BR_bulk_input;
