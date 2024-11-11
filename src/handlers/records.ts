@@ -9,6 +9,7 @@ import {Error} from "../utils/globalutils";
 import {BRFetchRecord, getBRs} from "./businessRules";
 import vm from 'node:vm';
 import {Dict} from "../constants/dictionary";
+import {AuthRequest} from "../modules/auth";
 
 const router = express.Router();
 
@@ -156,6 +157,14 @@ router.get("/:table/:nid", async (req:Request, res:Response) => {
     await updateNemiRecord(table, nid, current);
 
     res.status(200).send(current)
+})
+
+router.get("/test", async (req:AuthRequest, res:Response) => {
+    // send back the whole request object
+    // get user from request object
+    console.log("Request object: ", req.user);
+    res.status(200).send("Hello from records");
+
 })
 
 
