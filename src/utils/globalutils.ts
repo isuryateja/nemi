@@ -4,7 +4,7 @@ import {CreateTableBuilder} from "kysely";
 
 type TableBuilder = CreateTableBuilder<any, never>;
 
-export const GLOBAL_SCOPE: string = "ffb44ff4-54c1-49a1-bea7-b60d05c34859";
+export const GLOBAL_SCOPE: string = "1e20142e-b83c-4dd7-0000-c535c20dd392";
 export type Error = string;
 export const validateIdentifier= (name: string): Either<string, string> => {
     let isValid = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
@@ -28,7 +28,7 @@ export const typeMap:
         )
 };
 
-export const trace = (tag: string) => (x: string) =>{
-    console.log(tag, x)
+export const trace = (tag: string) => (x: any) =>{
+    console.log(tag, JSON.stringify(x))
     return x
 }
