@@ -13,4 +13,8 @@ export type TableColumn = {
     reference?: string
 }
 
+export type NemiJson = {
+    [key: string]: string | number | boolean | NemiJson | NemiJson[] | null;
+};
+
 export type TableColumns = TableColumn[]

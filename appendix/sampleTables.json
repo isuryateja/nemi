@@ -1,0 +1,80 @@
+[
+  {
+    "tableName" : "task",
+    "columns": [
+      {
+        "name": "short_description",
+        "type": "string",
+        "label": "Short description"
+      },
+      {
+        "name": "number",
+        "type": "string",
+        "label": "Number"
+      },
+      {
+        "name": "state",
+        "type": "string",
+        "label": "state"
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "label": "string"
+      },
+      {
+        "name": "assigned_to",
+        "type": "reference",
+        "reference": "nemi_user",
+        "label": "Assigned to"
+      },
+      {
+        "name": "active",
+        "type": "boolean",
+        "label": "Active"
+      }
+    ]
+  },
+  {
+    "tableName" : "case",
+    "columns": [
+      {
+        "name": "short_description",
+        "type": "string",
+        "label": "Short description"
+      },
+      {
+        "name": "number",
+        "type": "string",
+        "label": "Number"
+      },
+      {
+        "name": "state",
+        "type": "string",
+        "label": "state"
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "label": "string"
+      },
+      {
+        "name": "assigned_to",
+        "type": "reference",
+        "reference": "nemi_user",
+        "label": "Assigned to"
+      },
+      {
+        "name": "task",
+        "type": "reference",
+        "reference": "task",
+        "label": "task"
+      },
+      {
+        "name": "active",
+        "type": "boolean",
+        "label": "Active"
+      }
+    ]
+  }
+]

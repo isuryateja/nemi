@@ -40,42 +40,19 @@ const validateColumns = (values: Object) : Either<Error, any> => {
 
 //TODO
 const validateRecordInput = (input: RecordCreationInput): Either<Error, RecordCreationInput> => {
-
     return input.values && input.tableName ? E.right(input) : E.left(" Input type wrong");
-
 }
 
-export const insertIntoTable = (input: RecordCreationInput) : TaskEither<Error, void> => {
+export const insertIntoTable = (input: RecordCreationInput) : TaskEither<Error, any> => {
     const {tableName,values} = input;
     return tryCatch(
         async () => {
             let res = await db.insertInto(tableName).values(values).execute();
+            return input
         },
         (e) => "wrong: " + JSON.stringify(e)
     )
 }
-
-router.post("/create", async (req:Request, res: Response) => {
-   const {tableName,values} = req.body as RecordCreationInput;
-
-   const program = pipe(
-       validateRecordInput({tableName, values}),
-       TE.fromEither,
-       TE.chain(insertIntoTable)
-   )
-
-   const result = await program();
-
-   pipe(
-       result,
-       fold(
-           (e) => res.status(500).send(JSON.stringify(e)),
-           () => res.status(200).send(`Inserted a row in ${tableName}`)
-       )
-   )
-
-})
-
 
 const filterBrs =  (when: string, operation:string) => (brs: BRFetchRecord[]) : BRFetchRecord[] =>
     brs.filter(br => br.when === when && br.operation === operation)
@@ -102,7 +79,7 @@ const makeNemiRecordMutableSafe = (nemiRecord: any) => {
     return nemiRecord;
 }
 
-const getRecord = async (table: string, nid:string) => {
+export const getRecord = async (table: string, nid:string) => {
     return await db.selectFrom(table)
               .where('nid', '=', nid)
               .selectAll()
@@ -157,6 +134,27 @@ router.get("/:table/:nid", async (req:Request, res:Response) => {
     await updateNemiRecord(table, nid, current);
 
     res.status(200).send(current)
+})
+
+router.post("/create", async (req:Request, res: Response) => {
+    const {tableName,values} = req.body as RecordCreationInput;
+
+    const program = pipe(
+        validateRecordInput({tableName, values}),
+        TE.fromEither,
+        TE.chain(insertIntoTable)
+    )
+
+    const result = await program();
+
+    pipe(
+        result,
+        fold(
+            (e) => res.status(500).send(JSON.stringify(e)),
+            () => res.status(200).send(`Inserted a row in ${tableName}`)
+        )
+    )
+
 })
 
 router.get("/test", async (req:AuthRequest, res:Response) => {

@@ -1,0 +1,80 @@
+[
+  {
+    "tableName": "nemi_scope",
+    "nid": "1e20142e-b83c-4dd7-0000-c535c20dd392",
+    "name": "global",
+    "label": "Global Scope",
+    "version": "1.0",
+    "created_by": null
+  },
+  {
+    "tableName": "nemi_user",
+    "nid": "1e20142e-b83c-4dd7-0000-c535c20dd393",
+    "username": "dodo.masoo",
+    "firstname": "dodo",
+    "lastname": "masoo",
+    "gender": "m",
+    "password": "dodo",
+    "email": "dodo.masoo@musicalfountain.com",
+    "designation": "ceo",
+    "active": true
+  },
+  {
+    "tableName": "nemi_user",
+    "nid": "1e20142e-b83c-4dd7-0000-c535c20dd394",
+    "username": "jane.doe",
+    "firstname": "Jane",
+    "lastname": "Doe",
+    "gender": "f",
+    "password": "jane123",
+    "email": "jane.doe@example.com",
+    "designation": "developer",
+    "active": true
+  },
+  {
+    "tableName": "nemi_user",
+    "nid": "1e20142e-b83c-4dd7-0000-c535c20dd395",
+    "username": "john.smith",
+    "firstname": "John",
+    "lastname": "Smith",
+    "gender": "m",
+    "password": "john123",
+    "email": "john.smith@example.com",
+    "designation": "manager",
+    "active": true
+  },
+  {
+    "tableName": "nemi_role",
+    "nid": "1e20142e-b83c-4dd7-0000-c535c20dd396",
+    "scope": "1e20142e-b83c-4dd7-0000-c535c20dd392",
+    "name": "admin",
+    "description": "Administrator role",
+    "label": "Admin",
+    "active": true,
+    "created_by": "1e20142e-b83c-4dd7-0000-c535c20dd393"
+  },
+  {
+    "tableName": "nemi_role",
+    "nid": "1e20142e-b83c-4dd7-0000-c535c20dd397",
+    "scope": "1e20142e-b83c-4dd7-0000-c535c20dd392",
+    "name": "developer",
+    "description": "Developer role",
+    "label": "Developer",
+    "active": true,
+    "created_by": "1e20142e-b83c-4dd7-0000-c535c20dd393"
+  },
+  {
+    "tableName": "n_user_role",
+    "nid": "1e20142e-b83c-4dd7-0000-c535c20dd398",
+    "scope": "1e20142e-b83c-4dd7-0000-c535c20dd392",
+    "user": "1e20142e-b83c-4dd7-0000-c535c20dd393",
+    "role": "1e20142e-b83c-4dd7-0000-c535c20dd396"
+  },
+  {
+    "tableName": "n_user_role",
+    "nid": "1e20142e-b83c-4dd7-0000-c535c20dd399",
+    "scope": "1e20142e-b83c-4dd7-0000-c535c20dd392",
+    "user": "1e20142e-b83c-4dd7-0000-c535c20dd394",
+    "role": "1e20142e-b83c-4dd7-0000-c535c20dd397"
+  }
+]
