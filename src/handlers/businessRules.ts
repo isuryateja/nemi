@@ -7,6 +7,7 @@ import {Either, fold} from 'fp-ts/Either';
 import {db} from '../kysely.db';
 import {Error} from "../utils/globalutils";
 import {insertIntoTable} from "./records";
+import {Dict} from "../constants/dictionary";
 
 const router = express.Router();
 
@@ -29,14 +30,14 @@ export type BRCreationRecord = {
 
 export type BR_bulk_input = BRCreationRecord[]
 export const getBRs = async (table:string ): Promise< BRFetchRecord[] > => {
-    return await db.selectFrom('businessRules')
+    return await db.selectFrom(Dict.NEMI_BUSINESS_RULE)
         .select(['script', 'when', 'operation', 'order'])
         .where('table', '=', table)
         .execute()
 }
 
 const createBrs = async (brs: BR_bulk_input) => {
-    await db.insertInto('businessRules')
+    await db.insertInto(Dict.NEMI_BUSINESS_RULE)
         .values(brs)
         .execute();
 }
