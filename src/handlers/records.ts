@@ -5,11 +5,12 @@ import {pipe} from 'fp-ts/lib/function';
 import * as E from 'fp-ts/Either';
 import {Either, fold} from 'fp-ts/Either';
 import {db} from '../kysely.db';
-import {Error} from "../utils/globalutils";
+import * as N from "../utils/globalutils";
 import {BRFetchRecord, getBRs} from "./businessRules";
 import vm from 'node:vm';
 import {Dict} from "../constants/dictionary";
 import {AuthRequest} from "../modules/auth";
+import {IMMUTABLE_NEMI_PROPERTIES} from "../constants/records";
 
 const router = express.Router();
 
@@ -34,23 +35,23 @@ let exampleInput = {
 }
 
 //TODO
-const validateColumns = (values: Object) : Either<Error, any> => {
+const validateColumns = (values: Object) : Either<N.Error, any> => {
     return E.right(values)
 }
 
 //TODO
-const validateRecordInput = (input: RecordCreationInput): Either<Error, RecordCreationInput> => {
-    return input.values && input.tableName ? E.right(input) : E.left(" Input type wrong");
-}
+const validateRecordInput = (input: RecordCreationInput): Either<N.Error, RecordCreationInput> =>
+     input.values && input.tableName ? E.right(input) : E.left("Input type wrong");
 
-export const insertIntoTable = (input: RecordCreationInput) : TaskEither<Error, any> => {
+
+export const insertIntoTable = (input: RecordCreationInput) : TaskEither<N.Error, any> => {
     const {tableName,values} = input;
     return tryCatch(
         async () => {
             let res = await db.insertInto(tableName).values(values).execute();
             return input
         },
-        (e) => "wrong: " + JSON.stringify(e)
+        (e) => JSON.stringify(e)
     )
 }
 
@@ -58,18 +59,30 @@ const filterBrs =  (when: string, operation:string) => (brs: BRFetchRecord[]) : 
     brs.filter(br => br.when === when && br.operation === operation)
         .sort((a,b) => (a.order - b.order));
 
-const runScriptWithContext = (context: any) => (script: string) => {
+
+
+const cloneContext = (context: object): object => ({ ...context });
+
+const executeScript = (script: string) => (clonedContext: object)  => {
     const runnable = new vm.Script(script);
-    try {
-        runnable.runInNewContext(context);
-    } catch (error) {
-        console.error('Error executing script:', error);
-    }
+    runnable.runInNewContext(clonedContext);
+    return Promise.resolve(clonedContext);
+};
+
+const runScriptWithContext = (context: any) => (script: string): TaskEither<Error, any> => {
+    const executable = executeScript(script);
+    return pipe(
+        cloneContext(context),
+        (clonedContext) =>
+            tryCatch(
+                () => executable(clonedContext),
+                (error) => new Error(`Script execution failed: ${(error as Error).message}`)
+            )
+    )
 }
 
 const makeNemiRecordMutableSafe = (nemiRecord: any) => {
-    const immutableProperties = ['nid', 'scope', 'created_at']
-    immutableProperties.forEach(property => {
+    IMMUTABLE_NEMI_PROPERTIES.forEach(property => {
         Object.defineProperty(nemiRecord, property, {
             writable: false,
             enumerable: true,
