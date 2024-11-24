@@ -36,13 +36,14 @@ export const getBRs = async (table:string ): Promise< BRFetchRecord[] > => {
         .execute()
 }
 
-export const getBRsFP =  (table:string ): TaskEither<Error, BRFetchRecord[]> => {
+export const getBRsFP = (operation: string) => (table:string ): TaskEither<Error, BRFetchRecord[]> => {
     return tryCatch (
          async () =>  await db.selectFrom(Dict.NEMI_BUSINESS_RULE)
             .select(['script', 'when', 'operation', 'order'])
             .where('table', '=', table)
+            .where('operation', '=', operation)
             .execute(),
-        (e) => new Error(JSON.stringify(e))
+        (e) => new Error("Could not get business rules" + JSON.stringify(e))
     )
 }
 

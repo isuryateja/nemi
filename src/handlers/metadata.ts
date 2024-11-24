@@ -15,7 +15,7 @@ import * as J from "fp-ts/Json";
 import {getNemiRecord} from "../utils/tableUtils";
 import vm from 'node:vm';
 import {Dict} from "../constants/dictionary";
-import {AuthRequest} from "../modules/auth";
+import {AuthRequest} from "../types/globalTypes";
 import multer from 'multer';
 import {insertIntoTable, RecordCreationInput} from "./records";
 import {PathReporter} from "io-ts/PathReporter";
@@ -49,7 +49,7 @@ const createJSONRepresentation = (tableName: string, nid: string) => {
     );
 }
 
-router.get("/json", async (req: AuthRequest, res: Response): Promise<void> => {
+router.get("/json", async (req: Request, res: Response): Promise<void> => {
     let {tableName, nid} = req.query;
     if (!tableName || !nid) {
         res.status(400).send("Invalid request");
@@ -102,7 +102,7 @@ const processJSONFile = (buffer: Buffer): TE.TaskEither<string, string> => {
     );
 };
 
-router.post("/json/upload", upload.single('file') ,async (req: AuthRequest, res: Response): Promise<void> => {
+router.post("/json/upload", upload.single('file') ,async (req: Request, res: Response): Promise<void> => {
     await pipe(
         O.fromNullable(req.file),
         O.match(

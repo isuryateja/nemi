@@ -3,17 +3,9 @@ import * as O from "fp-ts/Option";
 import {pipe} from "fp-ts/function";
 import {Request, Response, NextFunction} from "express";
 import * as bcrypt from "bcrypt";
+import {UserPayload, AuthenticatedRequest} from "../types/globalTypes";
 
-interface UserPayload extends JwtPayload {
-    id: string;
-    username: string;
-}
 
- export interface AuthRequest extends Request {
-    user?: UserPayload;
-}
-
-type AuthenticatedRequest = Request & { user?: UserPayload };
 
 export const comparePasswords = (password: any, hash: any) => {
     return bcrypt.compare(password, hash);
