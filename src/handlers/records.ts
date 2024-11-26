@@ -12,16 +12,13 @@ import {IMMUTABLE_NEMI_PROPERTIES} from "../constants/records";
 import * as A from 'fp-ts/Array';
 import * as O from 'fp-ts/Option';
 import {UserPayload, AuthRequest} from "../types/globalTypes";
-
 const router = express.Router();
-
 
 const trace = <T>(message: string) => (value: T): TE.TaskEither<Error, T> =>
     pipe(
         TE.of(value as T), // Explicitly typing the value to T
         chainFirstIOK(() => () => console.log(`${message}:`, value))
     );
-
 
 export type RecordCreationInput = {
     "table": string,
@@ -52,11 +49,6 @@ let exampleInput = {
         description: "value"
     }
 }
-
-//TODO
-const validateRecordInput = (input: RecordCreationInput): Either<Error, RecordCreationInput> =>
-     input.values && input.table ? E.right(input) : E.left(new Error("Invalid input"))
-
 
 export const insertIntoTable = (input: RecordCreationInput) : TaskEither<Error, any> => {
     const {table,values} = input;
@@ -157,6 +149,18 @@ const getNemiRecord = (table: string, nid: string): TaskEither<Error, any> => {
     );
 };
 
+const deleteNemiRecord = (table: string) => (newScriptContext: ScriptContext): TaskEither<Error, any> => {
+    return tryCatch(
+        async () => {
+            await db.deleteFrom(table)
+                .where('nid', '=', newScriptContext.current.nid)
+                .execute();
+            return newScriptContext;
+        },
+        (e) => new Error(`Could not delete the record ` + JSON.stringify(e))
+    );
+}
+
 const getTableIdFromNemiTables = (table: string): TaskEither<Error, string> => {
     return pipe(
         tryCatch(
@@ -171,8 +175,6 @@ const getTableIdFromNemiTables = (table: string): TaskEither<Error, string> => {
         )((record) => O.fromNullable(record?.nid))
     );
 };
-
-
 
 const createScriptContext = (user: UserPayload, table: string, nid: string): TaskEither<Error, ScriptContext> => {
     return pipe(
@@ -196,6 +198,41 @@ const createScriptContextForInsert = (user: UserPayload, table: string, values: 
         )),
         TE.map(({ scriptContext }) => scriptContext)
     );
+}
+
+const processGetRecord = (user: UserPayload, table: string, nid: string): TaskEither<Error, any> => {
+    let getQueryBrs = getBRs('query');
+    return pipe(
+        TE.Do,
+        TE.bind('tableId', () => getTableIdFromNemiTables(table)), // can this be stored in redis ?
+        TE.bind('scriptContext', () => createScriptContext(user, table, nid)),
+        TE.bind('brs', ({tableId}) => getQueryBrs(tableId)),
+        TE.bind('finalContext', (
+            {scriptContext, brs}) => executeBusinessRulesOnQuery(scriptContext, brs, table)
+        ),
+        TE.map(({ finalContext, tableId }) => ( {...finalContext, tableId}))
+    );
+};
+
+const justGetRecord = (user: UserPayload, table: string, nid: string): TaskEither<Error, any> => {
+    return pipe(
+        TE.Do,
+        TE.bind('tableId', () => getTableIdFromNemiTables(table)),
+        TE.bind('scriptContext', () => createScriptContext(user, table, nid)),
+        TE.map(({ scriptContext }) => scriptContext)
+    );
+}
+
+const processUpdateRecord = (user: UserPayload, table: string, nid: string, values: any): TaskEither<Error, any> => {
+    return pipe(
+        TE.Do,
+        TE.bind('currentContext', () => justGetRecord(user, table, nid)),
+        TE.bind('brs', ({currentContext}) =>  getBRs('update')(currentContext.tableId)),
+        TE.bind('updatedContext', (
+            {currentContext, brs}) => executeBusinessRulesOnUpdate(currentContext, brs, table, values)
+        ),
+        TE.map(({ updatedContext }) => ( updatedContext ))
+    )
 }
 
 const executeBusinessRulesOnQuery = ( scriptContext: ScriptContext, brs: BusinessRule[], table: string )
@@ -230,33 +267,6 @@ const executeBusinessRulesOnUpdate = (
     );
 };
 
-
-const processGetRecord = (user: UserPayload, table: string, nid: string): TaskEither<Error, any> => {
-    let getQueryBrs = getBRs('query');
-    return pipe(
-        TE.Do,
-        TE.bind('tableId', () => getTableIdFromNemiTables(table)), // can this be stored in redis ?
-        TE.bind('scriptContext', () => createScriptContext(user, table, nid)),
-        TE.bind('brs', ({tableId}) => getQueryBrs(tableId)),
-        TE.bind('finalContext', (
-            {scriptContext, brs}) => executeBusinessRulesOnQuery(scriptContext, brs, table)
-        ),
-        TE.map(({ finalContext, tableId }) => ( {...finalContext, tableId}))
-    );
-};
-
-const processUpdateRecord = (user: UserPayload, table: string, nid: string, values: any): TaskEither<Error, any> => {
-    return pipe(
-        TE.Do,
-        TE.bind('currentContext', () => processGetRecord(user, table, nid)),
-        TE.bind('brs', ({currentContext}) =>  getBRs('update')(currentContext.tableId)),
-        TE.bind('updatedContext', (
-            {currentContext, brs}) => executeBusinessRulesOnUpdate(currentContext, brs, table, values)
-        ),
-        TE.map(({ updatedContext }) => ( updatedContext ))
-    )
-}
-
 const executeBusinessRulesOnInsert = (
     scriptContext: ScriptContext,
     brs: BusinessRule[],
@@ -277,6 +287,21 @@ const executeBusinessRulesOnInsert = (
     );
 };
 
+const executeBusinessRulesOnDelete = (
+    scriptContext: ScriptContext,
+    brs: BusinessRule[],
+    table: string
+): TaskEither<Error, ScriptContext> => {
+    const beforeBrs = filterAndSortBrs('before')(brs);
+    const afterBrs = filterAndSortBrs('after')(brs);
+
+    return pipe(
+        applyBusinessRules(scriptContext)(beforeBrs),
+        TE.chain((updatedContext) => deleteNemiRecord(table)(updatedContext)),
+        TE.chain((updatedContext) => applyBusinessRules(updatedContext)(afterBrs))
+    );
+}
+
 const processInsertRecord = (user: UserPayload, table: string, values: any): TaskEither<Error, any> => {
     return pipe(
         TE.Do,
@@ -290,6 +315,18 @@ const processInsertRecord = (user: UserPayload, table: string, values: any): Tas
         TE.chainFirst(trace('scriptContext')),
         TE.map(({ finalContext, tableId }) => ( {...finalContext, tableId}))
     );
+}
+
+const processDeleteRecord = (user: UserPayload, table: string, nid: string): TaskEither<Error, any> => {
+    return pipe(
+        TE.Do,
+        TE.bind('currentContext', () => justGetRecord(user, table, nid)),
+        TE.bind('brs', ({currentContext}) => getBRs('delete')(currentContext.tableId)),
+        TE.bind('updatedContext', (
+            {currentContext, brs}) => executeBusinessRulesOnDelete(currentContext, brs, table)
+        ),
+        TE.map(({ updatedContext }) => ( updatedContext ))
+    )
 }
 
 router.post("/create", async (req:Request, res: Response) => {
@@ -323,6 +360,21 @@ router.post("/update/", async (req:Request, res: Response) => {
     );
 
 })
+
+router.delete("/:table/:nid", async (req: Request, res: Response) => {
+    const { table, nid } = req.params;
+    const user = (req as AuthRequest).user;
+
+    const result = await processDeleteRecord(user, table, nid)();
+
+    pipe(
+        result,
+        E.fold(
+            (error) => res.status(500).send(error.message),
+            (finalContext) => res.status(200).send({...finalContext.current})
+        )
+    );
+});
 
 router.get("/:table/:nid", async (req: Request, res: Response) => {
     const { table, nid } = req.params;
