@@ -3,9 +3,9 @@ import * as TE from 'fp-ts/TaskEither';
 import {TaskEither, tryCatch} from 'fp-ts/TaskEither';
 import {pipe} from 'fp-ts/lib/function';
 import * as E from 'fp-ts/Either';
+import * as N from '../utils/globalutils';
 import {Either, fold} from 'fp-ts/Either';
 import {db} from '../kysely.db';
-import {Error} from "../utils/globalutils";
 import {insertIntoTable} from "./records";
 import {Dict} from "../constants/dictionary";
 
@@ -29,11 +29,23 @@ export type BRCreationRecord = {
 }
 
 export type BR_bulk_input = BRCreationRecord[]
-export const getBRs = async (table:string ): Promise< BRFetchRecord[] > => {
+export const getBRsImp = async (table:string ): Promise< BRFetchRecord[] > => {
     return await db.selectFrom(Dict.NEMI_BUSINESS_RULE)
         .select(['script', 'when', 'operation', 'order'])
         .where('table', '=', table)
         .execute()
+}
+
+export const getBRs = (operation: string) => (table:string ): TaskEither<Error, BRFetchRecord[]> => {
+    return tryCatch (
+         async () =>  await db.selectFrom(Dict.NEMI_BUSINESS_RULE)
+            .select(['script', 'when', 'operation', 'order'])
+            .where('table', '=', table)
+            .where('operation', '=', operation)
+            .where("active", "=", true)
+            .execute(),
+        (e) => new Error("Could not get business rules" + JSON.stringify(e))
+    )
 }
 
 const createBrs = async (brs: BR_bulk_input) => {
@@ -44,7 +56,7 @@ const createBrs = async (brs: BR_bulk_input) => {
 
 router.get("/:table", async (req:Request, res:Response) => {
     let table = req.params.table as string;
-    let brs = await getBRs(table);
+    let brs = await getBRsImp(table);
 
     console.log(JSON.stringify(brs))
 

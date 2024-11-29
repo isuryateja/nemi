@@ -1,6 +1,6 @@
 import express, {Request, Response} from "express";
 import {TableColumn, TableCreationInput} from "../types/tables";
-import {trace, validateIdentifier, typeMap, GLOBAL_SCOPE} from "../utils/globalutils";
+import {peek, validateIdentifier, typeMap, GLOBAL_SCOPE} from "../utils/globalutils";
 import * as TE from 'fp-ts/TaskEither';
 import * as O from 'fp-ts/Option';
 import {TaskEither, tryCatch} from 'fp-ts/TaskEither';

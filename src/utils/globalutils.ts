@@ -28,7 +28,7 @@ export const typeMap:
         )
 };
 
-export const trace = (tag: string) => (x: any) =>{
-    console.log(tag, JSON.stringify(x))
+export const peek = (tag: string) => (x: any) =>{
+    console.log(tag, x)
     return x
 }

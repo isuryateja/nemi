@@ -3,15 +3,17 @@ import * as TE from 'fp-ts/TaskEither';
 import { pipe } from 'fp-ts/function';
 import 'dotenv/config';
 import {protect} from "./modules/auth";
+import {getMessage} from "./cool/messages";
 
 import router from './router';
+import authRouter from "./authRouter";
 
 const app = express();
 
 app.use(express.json());
 
-// app.use("/api/v2/", protect, router);
-app.use("/api/v2/", router);
+app.use("/api/v2/auth", authRouter);
+app.use("/api/v2/", protect, router);
 
 const sendJson = (res: Response) => (data: object): TE.TaskEither<unknown, void> =>
     TE.rightTask(() => new Promise<void>((resolve) => {
@@ -40,5 +42,5 @@ app.get("/", async (req: Request, res: Response): Promise <void> => {
 const port: string | number = process.env.PORT || 3000;
 
 app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
+    console.log(getMessage(port));
 });
