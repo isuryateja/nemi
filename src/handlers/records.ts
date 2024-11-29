@@ -3,7 +3,6 @@ import * as TE from 'fp-ts/TaskEither';
 import {TaskEither, tryCatch, chainFirstIOK} from 'fp-ts/TaskEither';
 import {pipe} from 'fp-ts/lib/function';
 import * as E from 'fp-ts/Either';
-import {Either} from 'fp-ts/Either';
 import {db} from '../kysely.db';
 import {BRFetchRecord, getBRs} from "./businessRules";
 import vm from 'node:vm';
@@ -42,8 +41,9 @@ const CONTEXT = {
 };
 
 let exampleInput = {
-    tableName : "string",
+    table : "string",
     values: {
+        nid : "string",
         name: "value",
         scope: "value",
         description: "value"

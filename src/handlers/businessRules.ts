@@ -42,7 +42,7 @@ export const getBRs = (operation: string) => (table:string ): TaskEither<Error, 
             .select(['script', 'when', 'operation', 'order'])
             .where('table', '=', table)
             .where('operation', '=', operation)
-             .where("active", "=", true)
+            .where("active", "=", true)
             .execute(),
         (e) => new Error("Could not get business rules" + JSON.stringify(e))
     )
