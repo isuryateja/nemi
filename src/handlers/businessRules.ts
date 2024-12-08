@@ -6,7 +6,6 @@ import * as E from 'fp-ts/Either';
 import * as N from '../utils/globalutils';
 import {Either, fold} from 'fp-ts/Either';
 import {db} from '../kysely.db';
-import {insertIntoTable} from "./records";
 import {Dict} from "../constants/dictionary";
 
 const router = express.Router();

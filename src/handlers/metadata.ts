@@ -16,7 +16,7 @@ import vm from 'node:vm';
 import {Dict} from "../constants/dictionary";
 import {AuthRequest} from "../types/globalTypes";
 import multer from 'multer';
-import {insertIntoTable, RecordCreationInput} from "./records";
+import {insertRecord, RecordCreationInput} from "./records";
 import {PathReporter} from "io-ts/PathReporter";
 
 const router = express.Router();
@@ -77,7 +77,7 @@ const transformForInsert = (NemiJson: NemiJsonRecords) : Either<any, any> =>
 const insertNemiRecords = ( JsonRecords: RecordCreationInput[] ): TE.TaskEither<Error, string> => {
     return pipe(
         JsonRecords,
-        A.map(insertIntoTable), // Map each record to a TaskEither
+        A.map(insertRecord), // Map each record to a TaskEither
         A.sequence(TE.ApplicativeSeq), // Sequence the array of TaskEithers
         TE.map(() => 'Inserted records') // Map the successful result to a message
     );
