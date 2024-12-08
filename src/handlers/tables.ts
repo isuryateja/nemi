@@ -186,7 +186,7 @@ router.post("/create", async (req: Request, res: Response) => {
     const program = pipe(
         validateRequestBody(req.body),
         chain(() => validateIdentifier(tableName)),
-        E.chain(() => getTableBuilder(tableName, columns)),
+        chain(() => getTableBuilder(tableName, columns)),
         TE.fromEither,
         TE.chainFirst(() => checkTableExists(tableName)),
         TE.chain(createTable),

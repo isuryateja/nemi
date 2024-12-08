@@ -24,6 +24,8 @@ export type RecordCreationInput = {
     "values": Object
 }
 
+type F_CRUD_Operation = (tableName: string) => (context: ScriptContext) => TaskEither<Error, ScriptContext>;
+
 type ScriptContext = {
     [key: string]: any;
 };
@@ -40,17 +42,7 @@ const CONTEXT = {
     nemi: db
 };
 
-let exampleInput = {
-    table : "string",
-    values: {
-        nid : "string",
-        name: "value",
-        scope: "value",
-        description: "value"
-    }
-}
-
-export const insertIntoTable = (input: RecordCreationInput) : TaskEither<Error, any> => {
+export const insertRecord = (input: RecordCreationInput) : TaskEither<Error, any> => {
     const {table,values} = input;
     return tryCatch(
         async () => {
@@ -61,7 +53,7 @@ export const insertIntoTable = (input: RecordCreationInput) : TaskEither<Error, 
     )
 }
 
-export const insertIntoTableFP =(tableName: string) => (newScriptContext: ScriptContext) : TaskEither<Error, any> => {
+export const insertIntoTable =(tableName: string) => (newScriptContext: ScriptContext) : TaskEither<Error, any> => {
     return tryCatch(
         async () => {
             let res =await db.insertInto(tableName)
@@ -75,8 +67,8 @@ export const insertIntoTableFP =(tableName: string) => (newScriptContext: Script
     )
 }
 
-const updateNemiRecord = (tableName: string) => (newScriptContext: ScriptContext): TaskEither<Error, any> => {
-    return tryCatch(
+const updateNemiRecord = (tableName: string) => (newScriptContext: ScriptContext): TaskEither<Error, any> =>
+     tryCatch(
         async () => {
             await db.updateTable(tableName)
                 .where("nid", "=", newScriptContext.current.nid)
@@ -87,7 +79,6 @@ const updateNemiRecord = (tableName: string) => (newScriptContext: ScriptContext
         },
         (e) => new Error(`Could not update the record for ${tableName}` + JSON.stringify(e))
     )
-}
 
 const filterAndSortBrs =  (when: string) => (brs: BRFetchRecord[]) : BRFetchRecord[] =>
     brs.filter(br => br.when === when )
@@ -95,26 +86,40 @@ const filterAndSortBrs =  (when: string) => (brs: BRFetchRecord[]) : BRFetchReco
 
 const cloneContext = (context: object): object => ({ ...context });
 
-const executeScript = (script: string) => (clonedContext: object)  => {
-    const runnable = new vm.Script(script);
-    runnable.runInNewContext(clonedContext);
-    return Promise.resolve(clonedContext);
-};
-
-const runScriptWithContext = (script: string) => (context: any) : TaskEither<Error, any> => {
-    const executable = executeScript(script);
+const executeScript = (script: string) => (clonedContext: ScriptContext): TE.TaskEither<never, ScriptContext> => {
+    const backupContext = {...clonedContext};
     return pipe(
-        cloneContext(context),
-        (clonedContext) =>
-            tryCatch(
-                () => executable(clonedContext),
-                (error) => new Error(`Script execution failed: ${(error as Error).message}`)
+        TE.tryCatch<Error, ScriptContext>(
+            () => {
+                const runnable = new vm.Script(script);
+                runnable.runInNewContext(clonedContext);
+                return Promise.resolve(clonedContext);
+            },
+            (err) => err instanceof Error ? err : new Error(String(err))
+        ),
+        TE.orElse((error: Error): TE.TaskEither<never, ScriptContext> =>
+            pipe(
+                TE.fromIO(() => {
+                    console.error("Script execution failed, fallback context used.", error);
+                }),
+                TE.map(() => backupContext)
             )
+        )
+    );
+}
+
+const runScriptWithContext = (script: string) => (context: any): TE.TaskEither<Error, any> => {
+    const executable = executeScript(script)
+    return pipe(
+        TE.right(cloneContext(context)),
+        TE.chain(executable)
     )
 }
 
 const applyBusinessRules = (baseContext: ScriptContext) => (brs: BusinessRule[]) : TaskEither<Error, ScriptContext> =>
     pipe(
+        // TODO: filter business rules based on conditions and roles.
+        // map each br to a function that runs the script with the context
         brs.map(br => (ctx: ScriptContext) => runScriptWithContext(br.script)(ctx)),
         A.reduce(TE.right<Error, ScriptContext>(baseContext), (ctxTE, runBR) =>
             TE.chain(runBR)(ctxTE)
@@ -176,70 +181,34 @@ const getTableIdFromNemiTables = (table: string): TaskEither<Error, string> => {
     );
 };
 
-const createScriptContext = (user: UserPayload, table: string, nid: string): TaskEither<Error, ScriptContext> => {
-    return pipe(
-        TE.Do,
-        TE.bind('userData', () => getNemiRecord(Dict.NEMI_USER ,user.id)), // can this be stored in redis ?
-        TE.bind('current', () => getNemiRecord(table, nid)),
-        TE.bind('safeCurrent', ({ current }) => TE.of(makeNemiRecordMutableSafe(current))),
-        TE.bind('scriptContext', ({ safeCurrent, userData }) => TE.of(
-            { ...CONTEXT, current: safeCurrent, user: userData, })
-        ),
-        TE.map(({ scriptContext }) => scriptContext)
-    )
-}
-
-const createScriptContextForInsert = (user: UserPayload, table: string, values: any): TaskEither<Error, ScriptContext> => {
-    return pipe(
-        TE.Do,
-        TE.bind('userData', () => getNemiRecord(Dict.NEMI_USER, user.id)),
-        TE.bind('scriptContext', ({ userData }) => TE.of(
-            { ...CONTEXT, current: values, user: userData }
-        )),
-        TE.map(({ scriptContext }) => scriptContext)
-    );
-}
-
-const processGetRecord = (user: UserPayload, table: string, nid: string): TaskEither<Error, any> => {
-    let getQueryBrs = getBRs('query');
-    return pipe(
-        TE.Do,
-        TE.bind('tableId', () => getTableIdFromNemiTables(table)), // can this be stored in redis ?
-        TE.bind('scriptContext', () => createScriptContext(user, table, nid)),
-        TE.bind('brs', ({tableId}) => getQueryBrs(tableId)),
-        TE.bind('finalContext', (
-            {scriptContext, brs}) => executeBusinessRulesOnQuery(scriptContext, brs, table)
-        ),
-        TE.map(({ finalContext, tableId }) => ( {...finalContext, tableId}))
-    );
-};
-
-const justGetRecord = (user: UserPayload, table: string, nid: string): TaskEither<Error, any> => {
+const createScriptContext = (user: UserPayload, table: string, nid: string, current:any): TaskEither<Error, ScriptContext> => {
     return pipe(
         TE.Do,
         TE.bind('tableId', () => getTableIdFromNemiTables(table)),
-        TE.bind('scriptContext', () => createScriptContext(user, table, nid)),
-        TE.map(({ scriptContext }) => scriptContext)
-    );
-}
-
-const processUpdateRecord = (user: UserPayload, table: string, nid: string, values: any): TaskEither<Error, any> => {
-    return pipe(
-        TE.Do,
-        TE.bind('currentContext', () => justGetRecord(user, table, nid)),
-        TE.bind('brs', ({currentContext}) =>  getBRs('update')(currentContext.tableId)),
-        TE.bind('updatedContext', (
-            {currentContext, brs}) => executeBusinessRulesOnUpdate(currentContext, brs, table, values)
+        TE.bind('userData', () => getNemiRecord(Dict.NEMI_USER ,user.id)), // can this be stored in redis ?
+        TE.bind('safeCurrent', () => TE.of(makeNemiRecordMutableSafe(current))),
+        TE.bind('scriptContext', ({ safeCurrent, userData, tableId }) => TE.of
+            ( { ...CONTEXT, current: safeCurrent , user: userData, table: {id: tableId, name: table} })
         ),
-        TE.map(({ updatedContext }) => ( updatedContext ))
+        TE.map(({ scriptContext }) => scriptContext)
     )
 }
 
+const justGetRecordWithContext = (user: UserPayload, table: string, nid: string): TaskEither<Error, any> => {
+    return pipe(
+        TE.Do,
+        TE.bind('current', () => getNemiRecord(table, nid)),
+        TE.bind('scriptContext', ({current}) => createScriptContext(user, table, nid, current)),
+        TE.map(({ scriptContext }) => scriptContext)
+    );
+}
 const executeBusinessRulesOnQuery = ( scriptContext: ScriptContext, brs: BusinessRule[], table: string )
     : TaskEither<Error, ScriptContext> => {
     const beforeBrs = filterAndSortBrs("before")(brs);
     const afterBrs = filterAndSortBrs("after")(brs);
 
+    //TODO: this is not the ideal behaviour for query BRs, this should not update the NEMI record but only update
+    // the query
     return pipe(
         applyBusinessRules(scriptContext)(beforeBrs),
         TE.chain((updatedContext) => updateNemiRecord(table)(updatedContext)),
@@ -247,10 +216,9 @@ const executeBusinessRulesOnQuery = ( scriptContext: ScriptContext, brs: Busines
     );
 };
 
-const executeBusinessRulesOnUpdate = (
+const executeBusinessRules = (operation: F_CRUD_Operation) => (
     scriptContext: ScriptContext,
     brs: BusinessRule[],
-    table: string,
     values: any
 ): TaskEither<Error, ScriptContext> => {
     const beforeBrs = filterAndSortBrs('before')(brs);
@@ -262,27 +230,7 @@ const executeBusinessRulesOnUpdate = (
             updatedContext.current = { ...updatedContext.current, ...values };
             return updatedContext;
         }),
-        TE.chain((updatedContext) => updateNemiRecord(table)(updatedContext)),
-        TE.chain((updatedContext) => applyBusinessRules(updatedContext)(afterBrs))
-    );
-};
-
-const executeBusinessRulesOnInsert = (
-    scriptContext: ScriptContext,
-    brs: BusinessRule[],
-    table: string,
-    values: any
-): TaskEither<Error, ScriptContext> => {
-    const beforeBrs = filterAndSortBrs('before')(brs);
-    const afterBrs = filterAndSortBrs('after')(brs);
-
-    return pipe(
-        applyBusinessRules(scriptContext)(beforeBrs),
-        TE.map((updatedContext) => {
-            updatedContext.current = { ...updatedContext.current, ...values };
-            return updatedContext;
-        }),
-        TE.chain((updatedContext) => insertIntoTableFP(table)(updatedContext)),
+        TE.chain((updatedContext) => operation(scriptContext.table.name)(updatedContext)),
         TE.chain((updatedContext) => applyBusinessRules(updatedContext)(afterBrs))
     );
 };
@@ -302,26 +250,55 @@ const executeBusinessRulesOnDelete = (
     );
 }
 
-const processInsertRecord = (user: UserPayload, table: string, values: any): TaskEither<Error, any> => {
+const createScriptContextForInsert = (user: UserPayload, table: string, values: any): TaskEither<Error, ScriptContext> => {
     return pipe(
         TE.Do,
         TE.bind('tableId', () => getTableIdFromNemiTables(table)),
-        TE.bind('scriptContext', () => createScriptContextForInsert(user, table, values)),
+        TE.bind('userData', () => getNemiRecord(Dict.NEMI_USER, user.id)),
+        TE.bind('scriptContext', ({ userData, tableId }) => TE.of(
+            { ...CONTEXT, current: values, user: userData, table: { name: table, id: tableId } }
+        )),
+        TE.map(({ scriptContext }) => scriptContext)
+    );
+};
 
-        TE.bind('brs', ({tableId}) => getBRs('insert')(tableId)),
-        TE.bind('finalContext', (
-            {scriptContext, brs}) => executeBusinessRulesOnInsert(scriptContext, brs, table, values)
-        ),
-        TE.chainFirst(trace('scriptContext')),
-        TE.map(({ finalContext, tableId }) => ( {...finalContext, tableId}))
+const processGetRecord = (user: UserPayload, table: string, nid: string): TaskEither<Error, ScriptContext> => {
+    let getQueryBrs = getBRs('query');
+    return pipe(
+        TE.Do,
+        TE.bind('scriptContext', () => justGetRecordWithContext(user, table, nid)),
+        TE.bind('brs', ({scriptContext}) => getQueryBrs(scriptContext.table.id)),
+        TE.chain(({scriptContext, brs}) => executeBusinessRulesOnQuery(scriptContext, brs, table))
+    );
+};
+
+const processUpdateRecord = (user: UserPayload, table: string, nid: string, values: any): TaskEither<Error, any> => {
+    const executeBusinessRulesOnUpdate = executeBusinessRules(updateNemiRecord);
+    return pipe(
+        TE.Do,
+        TE.bind('currentContext', () => justGetRecordWithContext(user, table, nid)),
+        TE.bind('brs', ({currentContext}) =>  getBRs('update')(currentContext.tableId)),
+        TE.chain(( {currentContext, brs}) =>
+            executeBusinessRulesOnUpdate(currentContext, brs, values))
+    )
+}
+
+const processInsertRecord = (user: UserPayload, table: string, values: any): TaskEither<Error, any> => {
+    const executeBusinessRulesOnInsert = executeBusinessRules(insertIntoTable);
+    return pipe(
+        TE.Do,
+        TE.bind('scriptContext', () => createScriptContextForInsert(user, table, values)),
+        TE.bind('brs', ({scriptContext}) => getBRs('insert')(scriptContext.table.id)),
+        TE.chain( ( {scriptContext, brs}) =>
+            executeBusinessRulesOnInsert(scriptContext, brs, values) ),
     );
 }
 
 const processDeleteRecord = (user: UserPayload, table: string, nid: string): TaskEither<Error, any> => {
     return pipe(
         TE.Do,
-        TE.bind('currentContext', () => justGetRecord(user, table, nid)),
-        TE.bind('brs', ({currentContext}) => getBRs('delete')(currentContext.tableId)),
+        TE.bind('currentContext', () => justGetRecordWithContext(user, table, nid)),
+        TE.bind('brs', ({currentContext}) => getBRs('delete')(currentContext.table.id)),
         TE.bind('updatedContext', (
             {currentContext, brs}) => executeBusinessRulesOnDelete(currentContext, brs, table)
         ),
@@ -329,7 +306,8 @@ const processDeleteRecord = (user: UserPayload, table: string, nid: string): Tas
     )
 }
 
-router.post("/create", async (req:Request, res: Response) => {
+// -------------------------------------------------------------------------------- //
+router.post("/create/", async (req:Request, res: Response) => {
     const user = (req as AuthRequest).user;
     let {table, values} = req.body;
 
