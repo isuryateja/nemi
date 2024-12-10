@@ -16,8 +16,8 @@ import vm from 'node:vm';
 import {Dict} from "../constants/dictionary";
 import {AuthRequest} from "../types/globalTypes";
 import multer from 'multer';
-import {insertRecord, RecordCreationInput} from "./records";
 import {PathReporter} from "io-ts/PathReporter";
+import {insertRecord, RecordCreationInput} from "../modules/nemiRecord";
 
 const router = express.Router();
 
