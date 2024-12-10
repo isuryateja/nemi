@@ -27,25 +27,30 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
-const client_1 = require("@prisma/client");
-const E = __importStar(require("fp-ts/Either"));
+const TE = __importStar(require("fp-ts/TaskEither"));
 const function_1 = require("fp-ts/function");
-const prisma = new client_1.PrismaClient();
+require("dotenv/config");
+const auth_1 = require("./modules/auth");
+const messages_1 = require("./cool/messages");
+const router_1 = __importDefault(require("./router"));
+const authRouter_1 = __importDefault(require("./authRouter"));
 const app = (0, express_1.default)();
 app.use(express_1.default.json());
-const sendJson = (res) => (data) => () => new Promise((resolve) => {
-    res.resolve(data);
-    resolve();
-});
-const sendError = (res) => (error) => () => new Promise((resolve) => {
+app.use("/api/v2/auth", authRouter_1.default);
+app.use("/api/v2/", auth_1.protect, router_1.default);
+const sendJson = (res) => (data) => TE.rightTask(() => new Promise((resolve) => {
+    res.json(data);
+    resolve(); // Explicitly resolve void
+}));
+const sendError = (res) => (error) => TE.leftTask(() => new Promise((resolve) => {
     res.status(500).json(error);
-    resolve();
+    resolve(); // Explicitly resolve void
+}));
+app.get("/", async (req, res) => {
+    const responseTaskEither = (0, function_1.pipe)(TE.right({ message: "Hello from Nemi!" }), TE.fold(sendError(res), sendJson(res)));
+    await responseTaskEither();
 });
-app.get("/", (req, res) => {
-    const responseTask = (0, function_1.pipe)(E.right({ message: "Hello from Nemi!" }), E.fold(sendError(res), sendJson(res)));
-    responseTask().catch(() => res.status(500).send({ body: "Something went wrong" }));
-});
-const port = 3000;
+const port = process.env.PORT || 3000;
 app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
+    console.log((0, messages_1.getMessage)(port));
 });
