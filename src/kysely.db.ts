@@ -114,11 +114,36 @@ interface Database {
 export const db = new Kysely<Database>({
     dialect: new PostgresDialect({
         pool: new Pool({
-            connectionString: "postgresql://surya:nemi@localhost:5432/nemi",
+            // connectionString: "postgresql://surya:nemi@localhost:5432/nemi",
+            connectionString: process.env.DATABASE_URL,
+            connectionTimeoutMillis: 10000,
+            ssl: {
+                rejectUnauthorized: false,  // Use true if you have a proper SSL certificate
+            },
         }),
     }),
 });
 
 const pool = new Pool({
-    connectionString: "postgresql://surya:nemi@localhost:5432/nemi",
+    connectionString: process.env.DATABASE_URL,
 });
+
+
+
+// const pool = new Pool({
+//     connectionString: "postgresql://surya:nemi@localhost:5432/nemi",//process.env.DATABASE_URL,
+//     connectionTimeoutMillis: 10000,
+//     ssl: {
+//         rejectUnauthorized: false,  // Use true if you have a proper SSL certificate
+//     },
+// });
+//
+// pool.on('error', (err) => {
+//     console.error('PostgreSQL pool error:', err);
+// });
+//
+// export const db = new Kysely<Database>({
+//     dialect: new PostgresDialect({
+//         pool,
+//     }),
+// });
